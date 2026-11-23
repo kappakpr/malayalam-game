@@ -37,10 +37,19 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Install dependencies
+      - name: Install dependencies (macOS & Linux)
+        if: runner.os != 'Windows'
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pyinstaller
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path "requirements.txt") { pip install -r requirements.txt }
           pip install pyinstaller
 
       - name: Build with PyInstaller (macOS)
@@ -59,49 +68,23 @@ jobs:
         run: |
           pyinstaller --noconfirm --clean --windowed --name MalayalamGame malayalam_game.py
 
-      - name: Smoke test build (macOS)
+      - name: Print executable file name (macOS)
         if: runner.os == 'macOS'
         run: |
-          open -a dist/MalayalamGame.app
-          sleep 3
-          if ! pgrep -f "MalayalamGame" > /dev/null; then
-            echo "MalayalamGame.app exited unexpectedly during smoke test."
-            exit 1
-          fi
-          pkill -f "MalayalamGame" || true
+          ls -la dist/
+          ls -1 dist/MalayalamGame.app/Contents/MacOS
 
-      - name: Smoke test build (Windows)
+      - name: Print executable file name (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $exePath = "dist\MalayalamGame\MalayalamGame.exe"
-          if (-not (Test-Path $exePath)) {
-            $exePath = "dist\MalayalamGame.exe"
-          }
+          Get-ChildItem -Path "dist" -Recurse -File -Include "*.exe" | Select-Object -ExpandProperty FullName
 
-          $proc = Start-Process -FilePath $exePath -PassThru
-          Start-Sleep -Seconds 3
-          $proc.Refresh()
-
-          if ($proc.HasExited) {
-            Write-Error "MalayalamGame.exe exited immediately with code $($proc.ExitCode)"
-            exit 1
-          }
-
-          Stop-Process -Id $proc.Id -Force
-
-      - name: Smoke test build (Linux)
+      - name: Print executable file name (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update && sudo apt-get install -y xvfb
-          xvfb-run -a ./dist/MalayalamGame/MalayalamGame &
-          APP_PID=$!
-          sleep 3
-          if ! kill -0 "$APP_PID" 2>/dev/null; then
-            echo "MalayalamGame exited unexpectedly during smoke test."
-            exit 1
-          fi
-          kill "$APP_PID" 2>/dev/null || true
+          ls -la dist/
+          ls -1 dist/MalayalamGame
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7

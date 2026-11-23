@@ -15,3 +15,11 @@ dist/
 .DS_Store
 .vscode/
 .idea/
+
+
+dist/
+build/
+*.spec
+game/
+game.zip
+*.zip

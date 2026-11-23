@@ -1,3 +1,6 @@
+from pathlib import Path
+import sys
+import os
 import asyncio
 import os
 from pathlib import Path
@@ -42,6 +45,9 @@ def resource_path(relative_path: str) -> str:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
+def resource_path(relative_path: str) -> Path:
+    base_dir = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return base_dir / relative_path
 
 AUDIO_DIR = resource_path(os.path.join("assets", "audio"))
 CACHE_AUDIO_DIR = USER_DATA_DIR / "cache"

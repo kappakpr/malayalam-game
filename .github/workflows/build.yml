@@ -299,11 +299,114 @@ jobs:
           cat release-assets/SHA256SUMS.txt
           cat release-assets/release.json
 
-      - name: Publish GitHub Release
+publish:
+    needs: build
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      (
+        startsWith(github.ref, 'refs/tags/macos-v') ||
+        startsWith(github.ref, 'refs/tags/windows-v') ||
+        startsWith(github.ref, 'refs/tags/linux-v')
+      )
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            os_label: macos
+            arch: arm64
+            tag_prefix: macos-v
+            artifact_name: MalayalamGame-macOS-arm64
+            archive_name: MalayalamGame-macOS-arm64.zip
+          - os: windows-latest
+            os_label: windows
+            arch: x64
+            tag_prefix: windows-v
+            artifact_name: MalayalamGame-Windows-x64
+            archive_name: MalayalamGame-Windows-x64.zip
+          - os: ubuntu-latest
+            os_label: linux
+            arch: x64
+            tag_prefix: linux-v
+            artifact_name: MalayalamGame-Linux-x64
+            archive_name: MalayalamGame-Linux-x64.tar.gz
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download OS build artifact
+        id: download_artifact
+        continue-on-error: true
         if: >-
           (matrix.os_label == 'macos' && startsWith(github.ref, 'refs/tags/macos-v')) ||
           (matrix.os_label == 'windows' && startsWith(github.ref, 'refs/tags/windows-v')) ||
           (matrix.os_label == 'linux' && startsWith(github.ref, 'refs/tags/linux-v'))
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: release-assets
+
+      - name: Generate SHA256SUMS.txt and release.json
+        id: generate_manifest
+        if: >-
+          steps.download_artifact.outcome == 'success' &&
+          (
+            (matrix.os_label == 'macos' && startsWith(github.ref, 'refs/tags/macos-v')) ||
+            (matrix.os_label == 'windows' && startsWith(github.ref, 'refs/tags/windows-v')) ||
+            (matrix.os_label == 'linux' && startsWith(github.ref, 'refs/tags/linux-v'))
+          )
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          OS_LABEL: ${{ matrix.os_label }}
+          ARCH_LABEL: ${{ matrix.arch }}
+          ARCHIVE_NAME: ${{ matrix.archive_name }}
+        run: |
+          python3 - <<'EOF'
+          import hashlib
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          assets_dir = Path("release-assets")
+          archive_path = assets_dir / os.environ["ARCHIVE_NAME"]
+          if not archive_path.is_file():
+              raise SystemExit(f"Expected archive not found: {archive_path}")
+
+          digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+          (assets_dir / "SHA256SUMS.txt").write_text(
+              f"{digest}  {archive_path.name}\n", encoding="utf-8"
+          )
+
+          manifest = {
+              "tag": os.environ["RELEASE_TAG"],
+              "published_at": datetime.now(timezone.utc).isoformat(),
+              "assets": [
+                  {
+                      "os": os.environ["OS_LABEL"],
+                      "arch": os.environ["ARCH_LABEL"],
+                      "filename": archive_path.name,
+                      "size_bytes": archive_path.stat().st_size,
+                      "sha256": digest,
+                  }
+              ],
+          }
+          (assets_dir / "release.json").write_text(
+              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+          )
+          EOF
+          cat release-assets/SHA256SUMS.txt
+          cat release-assets/release.json
+
+      - name: Publish GitHub Release
+        if: >-
+          steps.generate_manifest.outcome == 'success' &&
+          (
+            (matrix.os_label == 'macos' && startsWith(github.ref, 'refs/tags/macos-v')) ||
+            (matrix.os_label == 'windows' && startsWith(github.ref, 'refs/tags/windows-v')) ||
+            (matrix.os_label == 'linux' && startsWith(github.ref, 'refs/tags/linux-v'))
+          )
         uses: softprops/action-gh-release@v3
         with:
           fail_on_unmatched_files: true

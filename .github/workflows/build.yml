@@ -55,7 +55,7 @@ jobs:
       - name: Build with PyInstaller (macOS)
         if: runner.os == 'macOS'
         run: |
-          pyinstaller --noconfirm --clean --windowed --name MalayalamGame --add-data "assets;assets" malayalam_game.py
+          pyinstaller --noconfirm --clean --windowed --name MalayalamGame --add-data "assets:assets" malayalam_game.py
 
       - name: Build with PyInstaller (Windows)
         if: runner.os == 'Windows'
@@ -66,7 +66,7 @@ jobs:
       - name: Build with PyInstaller (Linux)
         if: runner.os == 'Linux'
         run: |
-          pyinstaller --noconfirm --clean --windowed --name MalayalamGame --add-data "assets;assets" malayalam_game.py
+          pyinstaller --noconfirm --clean --windowed --name MalayalamGame --add-data "assets:assets" malayalam_game.py
 
       - name: Smoke test build (macOS)
         if: runner.os == 'macOS'

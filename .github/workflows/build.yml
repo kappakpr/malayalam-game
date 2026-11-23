@@ -306,6 +306,7 @@ jobs:
           (matrix.os_label == 'linux' && startsWith(github.ref, 'refs/tags/linux-v'))
         uses: softprops/action-gh-release@v3
         with:
+        fail_on_unmatched_files: true
           files: |
             release-assets/${{ matrix.archive_name }}
             release-assets/SHA256SUMS.txt

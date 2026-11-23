@@ -68,23 +68,57 @@ jobs:
         run: |
           pyinstaller --noconfirm --clean --windowed --name MalayalamGame malayalam_game.py
 
-      - name: Print executable file name (macOS)
+      - name: Smoke test build (macOS)
         if: runner.os == 'macOS'
         run: |
-          ls -la dist/
-          ls -1 dist/MalayalamGame.app/Contents/MacOS
+          APP_BIN="dist/MalayalamGame.app/Contents/MacOS/MalayalamGame"
+          if [ ! -f "$APP_BIN" ]; then
+            echo "Expected binary not found at $APP_BIN"
+            exit 1
+          fi
 
-      - name: Print executable file name (Windows)
+          QT_QPA_PLATFORM=offscreen "$APP_BIN" &
+          APP_PID=$!
+          sleep 3
+          if ! kill -0 "$APP_PID" 2>/dev/null; then
+            echo "MalayalamGame.app exited unexpectedly during smoke test."
+            exit 1
+          fi
+          kill "$APP_PID" 2>/dev/null || true
+
+      - name: Smoke test build (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Get-ChildItem -Path "dist" -Recurse -File -Include "*.exe" | Select-Object -ExpandProperty FullName
+          $exePath = "dist\MalayalamGame\MalayalamGame.exe"
+          if (-not (Test-Path $exePath)) {
+            Write-Error "Executable not found at $exePath"
+            exit 1
+          }
 
-      - name: Print executable file name (Linux)
+          $proc = Start-Process -FilePath $exePath -PassThru
+          Start-Sleep -Seconds 3
+          $proc.Refresh()
+
+          if ($proc.HasExited) {
+            Write-Error "MalayalamGame.exe exited immediately with code $($proc.ExitCode)"
+            exit 1
+          }
+
+          Stop-Process -Id $proc.Id -Force
+
+      - name: Smoke test build (Linux)
         if: runner.os == 'Linux'
         run: |
-          ls -la dist/
-          ls -1 dist/MalayalamGame
+          sudo apt-get update && sudo apt-get install -y xvfb
+          xvfb-run -a ./dist/MalayalamGame/MalayalamGame &
+          APP_PID=$!
+          sleep 3
+          if ! kill -0 "$APP_PID" 2>/dev/null; then
+            echo "MalayalamGame exited unexpectedly during smoke test."
+            exit 1
+          fi
+          kill "$APP_PID" 2>/dev/null || true
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7

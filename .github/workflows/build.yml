@@ -110,7 +110,7 @@ jobs:
       - name: Smoke test build (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update && sudo apt-get install -y xvfb
+          sudo apt-get update && sudo apt-get install -y xvfb libegl1 libgl1 libxkbcommon0 libxcb-cursor0
           xvfb-run -a ./dist/MalayalamGame/MalayalamGame &
           APP_PID=$!
           sleep 3

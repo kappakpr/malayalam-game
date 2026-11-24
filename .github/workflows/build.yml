@@ -1,6 +1,5 @@
 name: Build MalayalamGame
 
-
 on:
   push:
     branches: [ main ]
@@ -113,6 +112,14 @@ jobs:
             exit 1
           fi
           kill "$APP_PID" 2>/dev/null || true
+
+      - name: Ad-hoc sign macOS app
+        if: >-
+          runner.os == 'macOS' &&
+          (github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/') || startsWith(github.ref, 'refs/tags/macos-v'))
+        run: |
+          codesign --force --deep --sign - "dist/MalayalamGame.app"
+          codesign --verify --deep --strict --verbose=2 "dist/MalayalamGame.app"
 
       - name: Package macOS archive
         if: >-

@@ -1,0 +1,46 @@
+id,word,en,emoji,tiles
+amma,അമ്മ,Mother,👩🏽,അ|മ്മ|ക|ല|പ|മ|ഴ|ന
+achan,അച്ഛൻ,Father,👨🏽,അ|ച്ഛ|ൻ|മ|ല|ക|പ|ര
+ammamma,അമ്മമ്മ,Grandmother,👵🏽,അ|മ്മ|മ്മ|ക|ല|പ|ന|ര
+ammachan,അമ്മച്ചൻ,Maternal Uncle,🧔🏽,അ|മ്മ|ച്ച|ൻ|ക|ല|പ|ര
+kutti,കുട്ടി,Child,🧒,കു|ട്ടി|മ|ല|പ|ന|ക|ര
+koottukaran,കൂട്ടുകാരൻ,Friend (male),🧑🏽‍🤝‍🧑🏽,കൂ|ട്ടു|കാ|ര|ൻ|മ|ല|പ
+koottukari,കൂട്ടുകാരി,Friend (female),👧🏽,കൂ|ട്ടു|കാ|രി|മ|ല|ക|ന
+pusthakam,പുസ്തകം,Book,📖,പു|സ്ത|ക|ം|മ|ല|പ|ന
+pencil,പെൻസിൽ,Pencil,✏️,പെ|ൻ|സി|ൽ|മ|ല|ക|പ
+adhyapakan,അധ്യാപകൻ,Teacher,👩🏽‍🏫,അ|ധ്യാ|പ|ക|ൻ|മ|ല|ര
+padam,പാഠം,Lesson,📝,പാ|ഠ|ം|ക|ല|മ|ന|പ
+vayanashala,വായനശാല,Library,📚,വാ|യ|ന|ശാ|ല|ക|മ|പ
+chithram,ചിത്രം,Picture,🖼️,ചി|ത്ര|ം|മ|ല|ക|ന|പ
+katha,കഥ,Story,📕,ക|ഥ|മ|ല|പ|ന|ര|വ
+aksharams,അക്ഷരം,Letter,🔤,അ|ക്ഷ|ര|ം|മ|ല|ക|പ
+mazha,മഴ,Rain,🌧️,മ|ഴ|ക|ല|പ|ന|ര|വ
+mazhavillu,മഴവില്ല്,Rainbow,🌈,മ|ഴ|വി|ല്ല്|ക|ല|പ|ന
+kadal,കടൽ,Sea,🌊,ക|ട|ൽ|മ|ഴ|പ|ന|ല
+mala,മല,Mountain,⛰️,മ|ല|ക|പ|ന|ര|ഴ|വ
+nilavu,നിലാവ്,Moonlight,🌕,നി|ലാ|വ്|മ|ഴ|പ|ക|ല
+suriyan,സൂര്യൻ,Sun,☀️,സൂ|ര്യ|ൻ|മ|ല|ക|പ|ന
+nakshathram,നക്ഷത്രം,Star,⭐,ന|ക്ഷ|ത്ര|ം|മ|ല|ക|പ
+kadu,കാട്,Forest,🌲,കാ|ട്|മ|ല|ക|പ|ന|ര
+puzha,പുഴ,River,🏞️,പു|ഴ|ക|ല|മ|ന|പ|ര
+veedu,വീട്,House,🏠,വീ|ട്|ട|ക|ല|ന|മ|പ
+muttam,മുറ്റം,Courtyard,🏡,മു|റ്റ|ം|ക|ല|പ|ന|ര
+janalam,ജനലാം,Window,🪟,ജ|ന|ല|ം|മ|പ|ക|ര
+vathil,വാതിൽ,Door,🚪,വാ|തി|ൽ|മ|ല|ക|പ|ന
+aana,ആന,Elephant,🐘,ആ|ന|മ|ല|ക|പ|ര|ഴ
+pakshi,പക്ഷി,Bird,🐦,പ|ക്ഷി|മ|ല|ക|ന|ര|ഴ
+mayil,മയിൽ,Peacock,🦚,മ|യി|ൽ|ക|ല|പ|ന|ര
+kilikoodu,കിളിക്കൂട്,Bird's Nest,🪺,കി|ളി|ക്കൂ|ട്|മ|ല|ക|ന
+meen,മീൻ,Fish,🐟,മീ|ൻ|ക|ട|ൽ|പ|മ|ല
+thavala,തവള,Frog,🐸,ത|വ|ള|മ|ഴ|ക|ല|പ
+patta,പട്ട,Dog,🐶,പ|ട്ട|മ|ല|ക|ന|ര|വ
+poompattu,പൂമ്പാറ്റ,Butterfly,🦋,പൂ|മ്പാ|റ്റ|മ|ല|ക|ന|ഴ
+pazham,പഴം,Banana / Fruit,🍌,പ|ഴ|ം|മ|ല|ക|ന|ര
+manga,മാങ്ങ,Mango,🥭,മാ|ങ്ങ|മ|ല|ക|പ|ന|ര
+paal,പാൽ,Milk,🥛,പാ|ൽ|മ|ല|ക|ന|പ|ര
+chaya,ചായ,Tea,☕,ചാ|യ|മ|ല|ക|പ|ന|ര
+choru,ചോറ്,Cooked Rice,🍚,ചോ|റ്|മ|ല|ക|പ|ന|ര
+payasam,പായസം,Sweet Pudding,🥣,പാ|യ|സ|ം|മ|ല|ക|ന
+pookkalam,പൂക്കളം,Flower Rangoli,🌼,പൂ|ക്ക|ള|ം|മ|ല|ക|ന
+deepam,ദീപം,Lamp,🪔,ദീ|പ|ം|മ|ല|ക|ന|ര
+kuda,കുട,Umbrella,☂️,കു|ട|മ|ഴ|ക|ല|പ|ന

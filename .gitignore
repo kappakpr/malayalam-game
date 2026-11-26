@@ -23,3 +23,5 @@ build/
 game/
 game.zip
 *.zip
+
+*.sh

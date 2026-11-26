@@ -1,4 +1,4 @@
-# Malayalam Games — Inline CSV Vocabulary Editor Page
+# Malayalam Games — Add / Bulk Edit Vocabulary Page
 # Game Concept by "Kududu & Kukudu"
 # Copyright (C) 2026 Kududu & Kukudu
 #
@@ -7,80 +7,142 @@
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 
+import asyncio
 import csv
 import io
 from pathlib import Path
+import re
+import sys
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
-    QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from audio_manager import AudioGenWorker
-from csv_vocab import CSV_HEADERS, WORD_MATCH_CSV, ensure_game_csvs
-from custom_vocab import slugify_id
+from csv_vocab import WORD_MATCH_CSV, ensure_game_csvs
+
+try:
+    from custom_vocab import CUSTOM_AUDIO_DIR
+except ImportError:
+    CUSTOM_AUDIO_DIR = Path(WORD_MATCH_CSV).resolve().parent.parent / "custom_audio"
+from ui_styles import make_action_button
+
+REQUIRED_MATCH_COLUMNS = ["id", "ml", "en", "emoji", "cat"]
+
+
+class _BatchAudioWorker(QThread):
+    """Generates missing Malayalam audio files in the background using edge-tts."""
+
+    progress = Signal(str)
+    finished_batch = Signal(int, int)
+
+    def __init__(self, rows: list[dict[str, str]], audio_dir: Path, parent=None):
+        super().__init__(parent)
+        self.rows = rows
+        self.audio_dir = audio_dir
+
+    @staticmethod
+    def _safe_stem(row_id: str, ml_text: str) -> str:
+        cleaned = re.sub(r"[^A-Za-z0-9_-]+", "_", row_id.strip()).strip("_")
+        if cleaned:
+            return cleaned
+        return f"word_{abs(hash(ml_text)) % 1_000_000}"
+
+    async def _synthesize_all(self) -> tuple[int, int]:
+        import edge_tts  # type: ignore[import-not-found]
+
+        self.audio_dir.mkdir(parents=True, exist_ok=True)
+        generated = 0
+        failed = 0
+
+        for idx, row in enumerate(self.rows, start=1):
+            word_id = (row.get("id") or "").strip()
+            ml_text = (row.get("ml") or "").strip()
+            if not ml_text:
+                continue
+
+            stem = self._safe_stem(word_id, ml_text)
+            out_path = self.audio_dir / f"{stem}.mp3"
+            if out_path.exists() and out_path.stat().st_size > 0:
+                continue
+
+            self.progress.emit(f"🔊 Synthesizing {idx}/{len(self.rows)}: {ml_text}...")
+            try:
+                communicate = edge_tts.Communicate(ml_text, "ml-IN-SobhanaNeural")
+                await communicate.save(str(out_path))
+                generated += 1
+            except Exception:
+                failed += 1
+
+        return generated, failed
+
+    def run(self):
+        try:
+            generated, failed = asyncio.run(self._synthesize_all())
+        except Exception as exc:
+            self.progress.emit(f"⚠️ Audio batch error: {exc}")
+            self.finished_batch.emit(0, 1)
+            return
+        self.finished_batch.emit(generated, failed)
 
 
 class AddWordPage(QWidget):
-    """Direct CSV editor page for bulk-editing word_match.csv."""
+    """Bulk CSV editor for word_match.csv with external editor and batch TTS."""
 
-    def __init__(self, window, parent=None):
-        super().__init__(parent)
-        self.window = window
-        self._audio_queue: list[tuple[str, str]] = []
-        self._audio_total = 0
-        self._audio_saved = 0
-        self._audio_failed = 0
+    def __init__(self, main_window):
+        super().__init__(main_window)
+        self.win = main_window
+        self._audio_worker: _BatchAudioWorker | None = None
         self._build_ui()
         self.load_csv_into_editor()
 
     def _build_ui(self):
-        ml_font = self.window.ml_font_family
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(8)
+
+        title = QLabel("📝 Bulk Vocabulary Editor (word_match.csv)")
+        title.setFont(QFont(self.win.ml_font_family, 18, QFont.Bold))
+        title.setStyleSheet("color: #1B4332;")
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
 
         card = QFrame()
         card.setStyleSheet(
-            "background: #FFFFFF; border-radius: 18px; border: 2px solid #D8F3DC;"
+            "QFrame {"
+            "  background-color: #FFFFFF;"
+            "  border: 2px solid #B7E4C7;"
+            "  border-radius: 16px;"
+            "}"
         )
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(20, 16, 20, 16)
-        card_layout.setSpacing(10)
+        card_layout.setContentsMargins(14, 12, 14, 12)
+        card_layout.setSpacing(8)
 
-        header_row = QHBoxLayout()
-        heading = QLabel("Edit Vocabulary CSV (word_match.csv)")
-        heading.setStyleSheet("font-size: 19px; font-weight: bold; color: #1B4332; border: none;")
-
-        self.path_lbl = QLabel(str(WORD_MATCH_CSV))
-        self.path_lbl.setStyleSheet("font-size: 12px; color: #52796F; border: none;")
-        self.path_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
-
-        header_row.addWidget(heading)
-        header_row.addStretch()
-        header_row.addWidget(self.path_lbl)
-        card_layout.addLayout(header_row)
-
-        help_lbl = QLabel(
-            "Columns: id,ml,en,emoji,cat  —  type or paste multiple rows directly, then click Save CSV."
+        hint = QLabel(
+            "Columns: id, ml, en, emoji, cat — Edit directly below, open in an external app, "
+            "generate missing audio, and save."
         )
-        help_lbl.setStyleSheet("font-size: 13px; color: #2D6A4F; border: none;")
-        card_layout.addWidget(help_lbl)
+        hint.setWordWrap(True)
+        hint.setStyleSheet("font-size: 13px; color: #344E41; font-weight: bold; border: none;")
+        card_layout.addWidget(hint)
 
         self.editor = QPlainTextEdit()
-        self.editor.setFont(QFont(ml_font, 15))
-        self.editor.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.editor.setPlaceholderText("id,ml,en,emoji,cat\namma,അമ്മ,Mother,👩,Family")
+        editor_font = QFont(self.win.ml_font_family, 14)
+        editor_font.setStyleHint(QFont.Monospace)
+        self.editor.setFont(editor_font)
         self.editor.setStyleSheet(
             "QPlainTextEdit {"
-            "  background-color: #FAFDFB;"
+            "  background-color: #F8FCFA;"
             "  color: #1B4332;"
-            "  border: 2px solid #B7E4C7;"
+            "  border: 2px solid #95D5B2;"
             "  border-radius: 12px;"
             "  padding: 10px;"
             "}"
@@ -90,175 +152,192 @@ class AddWordPage(QWidget):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
 
-        revert_btn = QPushButton("↩ Revert from File")
-        revert_btn.setObjectName("ActionBtn")
-        revert_btn.clicked.connect(self.load_csv_into_editor)
-
-        external_btn = QPushButton("📝 Open in External Editor")
-        external_btn.setObjectName("ActionBtn")
-        external_btn.clicked.connect(self._open_in_external_editor)
-
-        audio_btn = QPushButton("🔊 Generate Missing Audio")
-        audio_btn.setObjectName("ActionBtn")
-        audio_btn.clicked.connect(self._generate_missing_audio)
-
-        save_btn = QPushButton("💾 Save CSV")
-        save_btn.setObjectName("ActionBtn")
-        save_btn.setStyleSheet(
-            "background-color: #2D6A4F; color: #FFFFFF; border-radius: 14px; "
-            "padding: 10px 20px; font-size: 14px; font-weight: bold;"
+        revert_btn = make_action_button(
+            "↩ Revert from File",
+            self.load_csv_into_editor,
+            variant="orange",
         )
-        save_btn.clicked.connect(self._save_csv)
+        external_btn = make_action_button(
+            "📝 Open in External Editor",
+            self._open_in_external_editor,
+            variant="orange",
+        )
+        self.audio_btn = make_action_button(
+            "🔊 Generate Missing Audio",
+            self._generate_missing_audio,
+            variant="orange",
+        )
+        save_btn = make_action_button(
+            "💾 Save CSV",
+            self._save_csv,
+            variant="green",
+        )
 
         btn_row.addWidget(revert_btn)
         btn_row.addWidget(external_btn)
         btn_row.addStretch()
-        btn_row.addWidget(audio_btn)
+        btn_row.addWidget(self.audio_btn)
         btn_row.addWidget(save_btn)
         card_layout.addLayout(btn_row)
 
         self.status_lbl = QLabel("")
-        self.status_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #2D6A4F; border: none;")
+        self.status_lbl.setWordWrap(True)
+        self.status_lbl.setAlignment(Qt.AlignCenter)
+        self.status_lbl.setStyleSheet("font-size: 14px; font-weight: bold; border: none;")
         card_layout.addWidget(self.status_lbl)
 
-        layout.addWidget(card)
+        layout.addWidget(card, stretch=1)
 
-    def _open_in_external_editor(self):
-        ensure_game_csvs()
-        resolved_path = WORD_MATCH_CSV.resolve()
-        opened = QDesktopServices.openUrl(QUrl.fromLocalFile(str(resolved_path)))
-        if opened:
-            self.status_lbl.setText(f"Opened {resolved_path} in external editor. Click Revert after saving.")
-            self.status_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #1B7A43; border: none;")
-        else:
-            self.status_lbl.setText(f"Could not launch an external editor for {resolved_path}.")
-            self.status_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #D9534F; border: none;")
+    def _set_status(self, message: str, color: str = "#1B7A43"):
+        self.status_lbl.setText(message)
+        self.status_lbl.setStyleSheet(
+            f"font-size: 14px; font-weight: bold; color: {color}; border: none;"
+        )
 
     def sync_categories(self):
-        """Hook kept for compatibility with MalayalamGameWindow."""
-        self.path_lbl.setText(str(WORD_MATCH_CSV))
-
-    def load_csv_into_editor(self):
-        ensure_game_csvs()
-        self.path_lbl.setText(str(WORD_MATCH_CSV))
-        if WORD_MATCH_CSV.exists():
-            text = WORD_MATCH_CSV.read_text(encoding="utf-8-sig")
-        else:
-            text = ",".join(CSV_HEADERS["word_match.csv"]) + "\n"
-        self.editor.setPlainText(text)
-        self.status_lbl.setText("Loaded word_match.csv")
-        self.status_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #2D6A4F; border: none;")
+        """Hook kept for mode switching and shared vocabulary pool updates."""
+        if not self.editor.toPlainText().strip():
+            self.load_csv_into_editor()
 
     def show_reloaded_feedback(self):
-        self.load_csv_into_editor()
-        self.status_lbl.setText("🔄 Reloaded word_match.csv")
-        self.status_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #2D6A4F; border: none;")
+        self._set_status("🔄 Reloaded vocabulary CSV files from disk.", color="#2D6A4F")
 
-    def _validate_rows(self, raw_text: str) -> tuple[int, list[str]]:
-        valid_count = 0
-        issues: list[str] = []
+    def load_csv_into_editor(self):
+        ensure_game_csvs(force_reset=False)
+        csv_path = Path(WORD_MATCH_CSV)
+        if not csv_path.exists():
+            self.editor.setPlainText(",".join(REQUIRED_MATCH_COLUMNS) + "\n")
+            self._set_status("⚠️ word_match.csv not found; initialized header.", color="#C1121F")
+            return
+
+        content = csv_path.read_text(encoding="utf-8-sig")
+        self.editor.setPlainText(content)
+        self._set_status(f"Loaded {csv_path.name}", color="#2D6A4F")
+
+    def _parse_and_validate_editor_csv(self) -> tuple[list[dict[str, str]], str | None]:
+        raw_text = self.editor.toPlainText()
+        if not raw_text.strip():
+            return [], "CSV content cannot be empty."
+
         reader = csv.DictReader(io.StringIO(raw_text))
-        if not reader.fieldnames or not {"ml", "en"}.issubset({c.strip() for c in reader.fieldnames if c}):
-            issues.append("Header must include at least 'ml' and 'en' columns.")
-            return 0, issues
+        if not reader.fieldnames:
+            return [], "Missing CSV header row."
 
-        for line_no, row in enumerate(reader, start=2):
-            if not any((v or "").strip() for v in row.values()):
+        normalized_headers = [h.strip() for h in reader.fieldnames if h is not None]
+        missing_cols = [col for col in REQUIRED_MATCH_COLUMNS if col not in normalized_headers]
+        if missing_cols:
+            return [], f"Missing required columns: {', '.join(missing_cols)}"
+
+        cleaned_rows: list[dict[str, str]] = []
+        seen_ids: set[str] = set()
+
+        for line_num, raw_row in enumerate(reader, start=2):
+            row = {
+                (k or "").strip(): (v or "").strip()
+                for k, v in raw_row.items()
+                if k is not None
+            }
+            if not any(row.values()):
                 continue
-            ml = (row.get("ml") or "").strip()
-            en = (row.get("en") or "").strip()
-            if not ml or not en:
-                issues.append(f"Row {line_no}: missing 'ml' or 'en'.")
-            else:
-                valid_count += 1
-        return valid_count, issues
+
+            row_id = row.get("id", "")
+            ml_val = row.get("ml", "")
+            en_val = row.get("en", "")
+            emoji_val = row.get("emoji", "")
+            cat_val = row.get("cat", "")
+
+            if not row_id or not ml_val or not en_val:
+                return [], f"Row {line_num}: 'id', 'ml', and 'en' are required."
+
+            if row_id in seen_ids:
+                return [], f"Row {line_num}: duplicate id '{row_id}'."
+            seen_ids.add(row_id)
+
+            cleaned_rows.append(
+                {
+                    "id": row_id,
+                    "ml": ml_val,
+                    "en": en_val,
+                    "emoji": emoji_val or "✨",
+                    "cat": cat_val or "Custom",
+                }
+            )
+
+        if not cleaned_rows:
+            return [], "No valid vocabulary rows found after header."
+
+        return cleaned_rows, None
 
     def _save_csv(self):
-        ensure_game_csvs()
-        raw_text = self.editor.toPlainText()
-        valid_count, issues = self._validate_rows(raw_text)
-
-        if issues and valid_count == 0:
-            self.status_lbl.setText(" / ".join(issues))
-            self.status_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #D9534F; border: none;")
+        rows, err = self._parse_and_validate_editor_csv()
+        if err:
+            self._set_status(f"❌ {err}", color="#C1121F")
             return
 
-        WORD_MATCH_CSV.write_text(raw_text, encoding="utf-8-sig")
-        self.window.refresh_vocab_pool(reset_round=False)
+        ensure_game_csvs(force_reset=False)
+        csv_path = Path(WORD_MATCH_CSV)
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if issues:
-            self.status_lbl.setText(
-                f"Saved {valid_count} valid row(s), with note: {' / '.join(issues)}"
-            )
-            self.status_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #D9534F; border: none;")
+        out = io.StringIO()
+        writer = csv.DictWriter(out, fieldnames=REQUIRED_MATCH_COLUMNS, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+
+        formatted = out.getvalue()
+        csv_path.write_text(formatted, encoding="utf-8-sig")
+        self.editor.setPlainText(formatted)
+
+        if hasattr(self.win, "refresh_vocab_pool"):
+            self.win.refresh_vocab_pool(reset_round=False)
+
+        self._set_status(f"✅ Saved {len(rows)} words to {csv_path.name}.", color="#1B7A43")
+
+    def _open_in_external_editor(self):
+        ensure_game_csvs(force_reset=False)
+        csv_path = Path(WORD_MATCH_CSV)
+        if not csv_path.exists():
+            self._save_csv()
+
+        opened = QDesktopServices.openUrl(QUrl.fromLocalFile(str(csv_path.resolve())))
+        if opened:
+            self._set_status(f"📂 Opened {csv_path.name} in external editor.", color="#2D6A4F")
         else:
-            self.status_lbl.setText(f"💾 Saved word_match.csv ({valid_count} word(s) active in Match & Scrabble).")
-            self.status_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #1B7A43; border: none;")
-
-    def _collect_missing_audio_rows(self) -> list[tuple[str, str]]:
-        from audio_manager import AUDIO_DIR
-        from custom_vocab import CUSTOM_AUDIO_DIR
-
-        missing: list[tuple[str, str]] = []
-        seen_ids: set[str] = set()
-        reader = csv.DictReader(io.StringIO(self.editor.toPlainText()))
-        for row in reader:
-            ml = (row.get("ml") or "").strip()
-            en = (row.get("en") or "").strip()
-            if not ml or not en:
-                continue
-            item_id = (row.get("id") or "").strip() or slugify_id(en or ml)
-            if item_id in seen_ids:
-                continue
-            seen_ids.add(item_id)
-
-            exists = any(
-                p.exists() and p.stat().st_size > 0
-                for p in (CUSTOM_AUDIO_DIR / f"{item_id}.mp3", Path(AUDIO_DIR) / f"{item_id}.mp3")
-            )
-            if not exists:
-                missing.append((item_id, ml))
-        return missing
+            self._set_status(f"⚠️ Could not open {csv_path} automatically.", color="#C1121F")
 
     def _generate_missing_audio(self):
-        if self._audio_queue:
-            self.status_lbl.setText("Audio batch generation is already running...")
+        if self._audio_worker is not None and self._audio_worker.isRunning():
+            self._set_status("⏳ Audio generation is already running...", color="#2D6A4F")
             return
 
-        self._save_csv()
-        missing = self._collect_missing_audio_rows()
-        if not missing:
-            self.status_lbl.setText("All vocabulary rows already have MP3 audio files.")
-            self.status_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #1B7A43; border: none;")
+        rows, err = self._parse_and_validate_editor_csv()
+        if err:
+            self._set_status(f"❌ Fix CSV before generating audio: {err}", color="#C1121F")
             return
 
-        self._audio_queue = list(missing)
-        self._audio_total = len(missing)
-        self._audio_saved = 0
-        self._audio_failed = 0
-        self._run_next_audio_job()
+        self.audio_btn.setEnabled(False)
+        self._set_status("🔊 Starting background audio synthesis...", color="#2D6A4F")
 
-    def _run_next_audio_job(self):
-        if not self._audio_queue:
-            self.status_lbl.setText(
-                f"Audio finished: {self._audio_saved} generated, {self._audio_failed} failed (of {self._audio_total})."
+        worker = _BatchAudioWorker(rows=rows, audio_dir=Path(CUSTOM_AUDIO_DIR), parent=self)
+        worker.progress.connect(lambda msg: self._set_status(msg, color="#2D6A4F"))
+        worker.finished_batch.connect(self._on_audio_batch_finished)
+        worker.finished.connect(worker.deleteLater)
+        self._audio_worker = worker
+        worker.start()
+
+    def _on_audio_batch_finished(self, generated: int, failed: int):
+        self.audio_btn.setEnabled(True)
+        self._audio_worker = None
+        if failed > 0:
+            self._set_status(
+                f"⚠️ Generated {generated} audio file(s), {failed} failed.",
+                color="#C1121F",
             )
-            color = "#1B7A43" if self._audio_failed == 0 else "#D9534F"
-            self.status_lbl.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {color}; border: none;")
-            return
-
-        item_id, ml_text = self._audio_queue.pop(0)
-        done_so_far = self._audio_total - len(self._audio_queue)
-        self.status_lbl.setText(f"Generating audio ({done_so_far}/{self._audio_total}): {item_id}...")
-        self.status_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #2D6A4F; border: none;")
-
-        worker = AudioGenWorker(item_id, ml_text, parent=self)
-        worker.finished_with_status.connect(self._on_batch_audio_done)
-        self.window.audio.register_worker(worker)
-
-    def _on_batch_audio_done(self, ok: bool, _msg: str):
-        if ok:
-            self._audio_saved += 1
         else:
-            self._audio_failed += 1
-        self._run_next_audio_job()
+            self._set_status(
+                f"✅ Audio batch complete: {generated} new file(s) generated.",
+                color="#1B7A43",
+            )
+
+
+if __name__ == "__main__":
+    print(f"Python {sys.version.split()[0]} — AddWordPage module loaded.")

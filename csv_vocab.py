@@ -13,8 +13,9 @@ import shutil
 import sys
 from typing import Any
 
-from custom_vocab import USER_DATA_DIR
+from pathlib import Path
 
+USER_DATA_DIR: Path = Path.home() / ".local" / "share" / "malayalam_games"  # or your platformdirs / app path
 CSV_DIR = Path(USER_DATA_DIR) / "csv_data"
 
 WORD_MATCH_CSV = CSV_DIR / "word_match.csv"

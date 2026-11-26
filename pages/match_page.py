@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui_styles import make_translucent_widget, style_frosted_panel
+
 
 class MatchPage(QWidget):
     """Picture-and-word matching page with category filtering and hover reveal."""
@@ -40,7 +42,7 @@ class MatchPage(QWidget):
 
     CAT_UNSELECTED_STYLE = """
         QPushButton {
-            background-color: #FFFFFF;
+            background-color: rgba(255, 255, 255, 240);
             color: #2D6A4F;
             border: 2px solid #95D5B2;
             border-radius: 12px;
@@ -55,6 +57,23 @@ class MatchPage(QWidget):
         }
     """
 
+    WORD_CARD_STYLE = """
+        QPushButton#WordCard {
+            background-color: rgba(255, 255, 255, 242);
+            color: #1B4332;
+            border: 2px solid #B7E4C7;
+            border-radius: 16px;
+        }
+        QPushButton#WordCard:hover {
+            background-color: #F4FBF7;
+            border-color: #40916C;
+        }
+        QPushButton#WordCard:pressed {
+            background-color: #E8F8F0;
+            border-color: #1B4332;
+        }
+    """
+
     def __init__(self, window, parent=None):
         super().__init__(parent)
         self.window = window
@@ -64,6 +83,7 @@ class MatchPage(QWidget):
         self._prompt_hovered = False
         self.cat_buttons: dict[str, QPushButton] = {}
 
+        make_translucent_widget(self)
         self._build_ui()
 
     def _vocab_items(self) -> list[dict]:
@@ -86,14 +106,15 @@ class MatchPage(QWidget):
     def _build_ui(self):
         ml_font = self.window.ml_font_family
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
+        layout.setContentsMargins(10, 4, 10, 6)
+        layout.setSpacing(8)
 
         cat_row = QHBoxLayout()
         cat_row.setSpacing(6)
 
         arrow_style = """
             QPushButton#CatArrow {
-                background-color: #FFFFFF;
+                background-color: rgba(255, 255, 255, 240);
                 color: #1B4332;
                 border: 2px solid #95D5B2;
                 border-radius: 12px;
@@ -116,7 +137,7 @@ class MatchPage(QWidget):
                 border-color: #2D6A4F;
             }
             QPushButton#CatArrow:disabled {
-                background-color: #EAF2EE;
+                background-color: rgba(234, 242, 238, 190);
                 color: #7A9E8B;
                 border-color: #C7DFD2;
             }
@@ -134,10 +155,10 @@ class MatchPage(QWidget):
         self.cat_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.cat_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.cat_scroll.setFrameShape(QFrame.NoFrame)
-        self.cat_scroll.setStyleSheet("background: transparent;")
+        make_translucent_widget(self.cat_scroll)
 
         self.cat_container = QWidget()
-        self.cat_container.setStyleSheet("background: transparent;")
+        make_translucent_widget(self.cat_container)
         self.cat_bar = QHBoxLayout(self.cat_container)
         self.cat_bar.setContentsMargins(0, 2, 0, 2)
         self.cat_bar.setSpacing(8)
@@ -159,19 +180,19 @@ class MatchPage(QWidget):
         layout.addLayout(cat_row)
 
         banner = QFrame()
-        banner.setStyleSheet("background: #FFFFFF; border-radius: 18px; border: 2px solid #D8F3DC;")
+        style_frosted_panel(banner, object_name="MatchBanner", alpha=125, radius=18)
         banner_layout = QHBoxLayout(banner)
-        banner_layout.setContentsMargins(20, 14, 20, 14)
+        banner_layout.setContentsMargins(20, 12, 20, 12)
 
         self.prompt_lbl = QLabel("Find: ...")
         self.prompt_lbl.setFont(QFont(ml_font, 24, QFont.Bold))
-        self.prompt_lbl.setStyleSheet("color: #1B4332;")
+        self.prompt_lbl.setStyleSheet("color: #1B4332; background: transparent; border: none;")
         self.prompt_lbl.setAttribute(Qt.WA_Hover, True)
         self.prompt_lbl.installEventFilter(self)
 
         hear_btn = QPushButton("🔊 Hear Word")
         hear_btn.setObjectName("ActionBtn")
-        hear_btn.setMinimumSize(170, 46)
+        hear_btn.setMinimumSize(170, 44)
         hear_btn.setStyleSheet("""
             QPushButton#ActionBtn {
                 background-color: #FF8C42;
@@ -201,14 +222,15 @@ class MatchPage(QWidget):
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(18)
-        grid.setVerticalSpacing(14)
+        grid.setVerticalSpacing(12)
         self.card_buttons: list[QPushButton] = []
         self.card_widgets: list[tuple[QLabel, QLabel, QLabel]] = []
 
         for idx in range(4):
             btn = QPushButton()
             btn.setObjectName("WordCard")
-            btn.setFixedSize(360, 165)
+            btn.setFixedSize(360, 160)
+            btn.setStyleSheet(self.WORD_CARD_STYLE)
             btn.clicked.connect(lambda checked=False, i=idx: self.check_answer(i))
 
             card_layout = QVBoxLayout(btn)
@@ -249,7 +271,10 @@ class MatchPage(QWidget):
 
         self.feedback_lbl = QLabel("Tap the matching picture card!")
         self.feedback_lbl.setAlignment(Qt.AlignCenter)
-        self.feedback_lbl.setStyleSheet("font-size: 17px; font-weight: bold; color: #2D6A4F;")
+        self.feedback_lbl.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.feedback_lbl.setStyleSheet(
+            "font-size: 17px; font-weight: bold; color: #1B4332; background: transparent;"
+        )
         layout.addWidget(self.feedback_lbl)
 
     def eventFilter(self, obj, event):
@@ -330,7 +355,9 @@ class MatchPage(QWidget):
 
         self._update_prompt_display(self._prompt_hovered)
         self.feedback_lbl.setText("Tap the matching card!")
-        self.feedback_lbl.setStyleSheet("font-size: 17px; font-weight: bold; color: #2D6A4F;")
+        self.feedback_lbl.setStyleSheet(
+            "font-size: 17px; font-weight: bold; color: #1B4332; background: transparent;"
+        )
 
         for idx, ((emoji_lbl, ml_lbl, en_lbl), btn) in enumerate(zip(self.card_widgets, self.card_buttons)):
             if idx < len(choices):
@@ -354,11 +381,15 @@ class MatchPage(QWidget):
         if chosen["id"] == self.current_target["id"]:
             self.window.add_stars(1)
             self.feedback_lbl.setText(f"🎉 ശരിയാണ്! (Correct!)  {chosen['ml']} = {chosen['en']}")
-            self.feedback_lbl.setStyleSheet("font-size: 18px; font-weight: bold; color: #1B7A43;")
+            self.feedback_lbl.setStyleSheet(
+                "font-size: 18px; font-weight: bold; color: #1B7A43; background: transparent;"
+            )
             self.next_round()
         else:
             self.feedback_lbl.setText(f"Try again! That was {chosen['ml']} ({chosen['en']}).")
-            self.feedback_lbl.setStyleSheet("font-size: 17px; font-weight: bold; color: #D9534F;")
+            self.feedback_lbl.setStyleSheet(
+                "font-size: 17px; font-weight: bold; color: #D9534F; background: transparent;"
+            )
             self.window.play_audio(
                 chosen["id"],
                 followup_phrase=("Try again", "en-US-AriaNeural"),
@@ -366,4 +397,6 @@ class MatchPage(QWidget):
 
     def show_reloaded_feedback(self):
         self.feedback_lbl.setText("🔄 Reloaded CSV data.")
-        self.feedback_lbl.setStyleSheet("font-size: 17px; font-weight: bold; color: #2D6A4F;")
+        self.feedback_lbl.setStyleSheet(
+            "font-size: 17px; font-weight: bold; color: #1B4332; background: transparent;"
+        )

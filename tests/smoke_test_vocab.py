@@ -62,10 +62,16 @@ def test_bundled_csv_validation() -> None:
 def test_validator_catches_invalid_csv() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         bad_dir = Path(tmp) / "bad_csv"
-        bad_dir.mkdir(parents=True, exist_ok=True)
-        (bad_dir / "word_match.csv").write_text("id,ml\nonly_two_cols,അമ്മ\n", encoding="utf-8-sig")
+        shutil.copytree(PROJECT_ROOT / "assets" / "csv", bad_dir)
+        (bad_dir / "word_match.csv").write_text(
+            "id,ml\nonly_two_cols,അമ്മ\n",
+            encoding="utf-8-sig",
+        )
         res = _run_validator(bad_dir)
-        assert res.returncode != 0, "Expected non-zero exit code for malformed word_match.csv"
+        assert res.returncode != 0, (
+            "Expected non-zero exit code for malformed word_match.csv "
+            f"(got {res.returncode}).\nSTDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}"
+        )
         print("[PASS] validate_csv.py flagged malformed word_match.csv")
 
 
@@ -371,12 +377,91 @@ def test_custom_vocab_skips_blank_or_malformed_entries() -> None:
             csv_vocab.SCRABBLE_RACKS_CSV = orig_scrabble_racks
 
 
+def test_whitespace_trimming_in_vocab_fields() -> None:
+    orig_csv_dir = csv_vocab.CSV_DIR
+    orig_word_match = csv_vocab.WORD_MATCH_CSV
+    orig_letter_tracing = csv_vocab.LETTER_TRACING_CSV
+    orig_word_builder = csv_vocab.WORD_BUILDER_CSV
+    orig_scrabble_racks = csv_vocab.SCRABBLE_RACKS_CSV
+    orig_assets_csv_dir = csv_vocab.ASSETS_CSV_DIR
+
+    snapshot_custom = load_custom_vocab()
+    clean_id = "smoke_test_trimmed_kadal"
+    padded_entry = {
+        "id": f"  {clean_id}\t",
+        "ml": " \n കടൽ  ",
+        "en": "  Sea \t ",
+        "emoji": "🌊",
+        "cat": "  WhitespaceTest  ",
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        seeded_assets = tmp_path / "assets_csv"
+        user_csv_dir = tmp_path / "user_csv_data"
+        shutil.copytree(PROJECT_ROOT / "assets" / "csv", seeded_assets)
+
+        try:
+            csv_vocab.ASSETS_CSV_DIR = seeded_assets
+            csv_vocab.CSV_DIR = user_csv_dir
+            csv_vocab.WORD_MATCH_CSV = user_csv_dir / "word_match.csv"
+            csv_vocab.LETTER_TRACING_CSV = user_csv_dir / "letter_tracing.csv"
+            csv_vocab.WORD_BUILDER_CSV = user_csv_dir / "word_builder.csv"
+            csv_vocab.SCRABBLE_RACKS_CSV = user_csv_dir / "scrabble_racks.csv"
+            csv_vocab.ensure_game_csvs(force_reset=False)
+
+            base_custom = [
+                w for w in snapshot_custom
+                if (w.get("id") or "").strip() != clean_id
+            ]
+            save_custom_vocab(base_custom + [padded_entry])
+
+            loaded = load_custom_vocab()
+            matched = next(
+                (w for w in loaded if (w.get("id") or "").strip() == clean_id),
+                None,
+            )
+            assert matched is not None, "Padded custom entry was not found after reload"
+
+            trimmed_id = (matched.get("id") or "").strip()
+            trimmed_ml = (matched.get("ml") or "").strip()
+            trimmed_en = (matched.get("en") or "").strip()
+
+            assert trimmed_id == clean_id, f"Expected trimmed id {clean_id!r}, got {trimmed_id!r}"
+            assert trimmed_ml == "കടൽ", f"Expected trimmed ml 'കടൽ', got {trimmed_ml!r}"
+            assert trimmed_en == "Sea", f"Expected trimmed en 'Sea', got {trimmed_en!r}"
+
+            combined_pool = csv_vocab.load_word_match_csv() + loaded
+            assert any(
+                (item.get("ml") or "").strip() == "കടൽ"
+                and (item.get("id") or "").strip() == clean_id
+                for item in combined_pool
+            ), "Trimmed entry missing from combined Match vocabulary pool"
+
+            lookup = _build_scrabble_lookup(combined_pool)
+            assert "കടൽ" in lookup, "Trimmed Malayalam word missing from Scrabble lookup"
+            assert "  കടൽ  " not in lookup, "Un-trimmed Malayalam key should not appear in lookup"
+            assert lookup["കടൽ"]["id"] == clean_id
+            assert lookup["കടൽ"]["en"] == "Sea"
+
+            print("[PASS] Leading/trailing whitespace in ml, en, and id is trimmed cleanly")
+        finally:
+            save_custom_vocab(snapshot_custom)
+            csv_vocab.ASSETS_CSV_DIR = orig_assets_csv_dir
+            csv_vocab.CSV_DIR = orig_csv_dir
+            csv_vocab.WORD_MATCH_CSV = orig_word_match
+            csv_vocab.LETTER_TRACING_CSV = orig_letter_tracing
+            csv_vocab.WORD_BUILDER_CSV = orig_word_builder
+            csv_vocab.SCRABBLE_RACKS_CSV = orig_scrabble_racks
+
+
 def main() -> int:
     test_bundled_csv_validation()
     test_validator_catches_invalid_csv()
     test_seeding_reset_and_shared_vocab()
     test_custom_vocab_merges_into_shared_pool()
     test_custom_vocab_skips_blank_or_malformed_entries()
+    test_whitespace_trimming_in_vocab_fields()
     print("All vocabulary smoke tests passed.")
     return 0
 

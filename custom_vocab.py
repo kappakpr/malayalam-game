@@ -5,6 +5,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from pathlib import Path
+from csv_vocab import CSV_DIR
+
+from pathlib import Path
+from csv_vocab import CSV_DIR, USER_DATA_DIR
+
+CUSTOM_AUDIO_DIR: Path = USER_DATA_DIR / "custom_audio"
 
 def get_user_data_dir(app_name: str = "MalayalamGame") -> Path:
     """Return the cross-platform application support / data directory."""
